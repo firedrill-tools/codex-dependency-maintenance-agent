@@ -25,3 +25,5 @@ This changed-file check is an application policy gate, not a hard security bound
 Firedrill integration will be added against the verified new release. This repository is private and has no selected public license.
 
 Implementation reference: [Codex SDK](https://developers.openai.com/codex/sdk).
+
+Explore related applications in the [Firedrill example catalog](https://github.com/firedrill-tools/firedrill-example-catalog). Product and setup references: [Firedrill](https://firedrill.run/) and the [official developer documentation](https://docs.firedrill.run/). Use documentation matching the qualified release; this repository records its current integration limits above.
