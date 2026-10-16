@@ -12,4 +12,9 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Permit the pinned CLI sandbox on this disposable Ubuntu runner
+        run: node scripts/codex-ci-profile.js install
       - run: npm test
+      - name: Remove the CI-only AppArmor profile
+        if: always()
+        run: node scripts/codex-ci-profile.js remove
