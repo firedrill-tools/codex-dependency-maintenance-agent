@@ -1,16 +1,23 @@
-import { spawnSync } from "node:child_process";
+import { runProcess } from "./processes.js";
 export function childEnvironment() {
   const env = { ...process.env };
   for (const key of Object.keys(env))
     if (
       key === "NODE_TEST_CONTEXT" ||
       key.toLowerCase() === "npm_config_allow_scripts" ||
-      key.startsWith("GIT_")
+      key.startsWith("GIT_") ||
+      [
+        "OPENAI_API_KEY",
+        "CODEX_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
+        "GEMINI_API_KEY",
+      ].includes(key)
     )
       delete env[key];
   return env;
 }
-export function command(name, args, cwd, timeout = 30000) {
+export async function command(name, args, cwd, timeout = 30000) {
   if (name === "git")
     args = [
       "--no-replace-objects",
@@ -29,23 +36,20 @@ export function command(name, args, cwd, timeout = 30000) {
       "commit.gpgsign=false",
       ...args,
     ];
-  const result = spawnSync(name, args, {
+  const options =
+    typeof timeout === "number" ? { timeoutMs: timeout } : (timeout ?? {});
+  return await runProcess({
+    ...options,
+    program: name,
+    args,
     cwd,
-    encoding: "utf8",
-    timeout,
     env: childEnvironment(),
-    maxBuffer: 1048576,
-    stdio: ["ignore", "pipe", "pipe"],
   });
-  return {
-    exitCode: result.status,
-    signal: result.signal,
-    error: result.error
-      ? { code: result.error.code ?? null, message: result.error.message }
-      : null,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? result.error?.message ?? "",
-  };
 }
+
 export const succeeded = (result) =>
-  Boolean(result) && result.exitCode === 0 && !result.signal && !result.error;
+  Boolean(result) &&
+  result.exitCode === 0 &&
+  !result.signal &&
+  !result.error &&
+  result.lifecycle?.group_exit_confirmed === true;

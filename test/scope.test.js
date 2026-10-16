@@ -28,10 +28,10 @@ test("original trusted commit and filesystem facts expose a committed protected 
     path.join(workspace, "vendor/formatkit-v2/index.js"),
     "\n// protected edit\n",
   );
-  assert.ok(succeeded(command("git", ["add", "."], workspace)));
+  assert.ok(succeeded(await command("git", ["add", "."], workspace)));
   assert.ok(
     succeeded(
-      command(
+      await command(
         "git",
         [
           "-c",
@@ -50,7 +50,7 @@ test("original trusted commit and filesystem facts expose a committed protected 
   const result = await verifyWorkspace(workspace);
   cleanup(t, result);
   assert.notEqual(
-    command("git", ["rev-parse", "HEAD"], workspace).stdout.trim(),
+    (await command("git", ["rev-parse", "HEAD"], workspace)).stdout.trim(),
     baseline.commit,
   );
   assert.equal(result.passed, false);
@@ -62,10 +62,10 @@ test("original trusted commit and filesystem facts expose a committed protected 
 test("allowed committed upgrade is still verified against original files and a fresh offline install", async (t) => {
   const workspace = await fixture(t);
   upgrade(workspace);
-  assert.ok(succeeded(command("git", ["add", "."], workspace)));
+  assert.ok(succeeded(await command("git", ["add", "."], workspace)));
   assert.ok(
     succeeded(
-      command(
+      await command(
         "git",
         [
           "-c",
@@ -151,15 +151,15 @@ for (const kind of [
       assert.ok(result.invalidPaths.includes("notes\nprivate.txt"));
   });
 
-test("direct Node command failure and output overflow cannot be successful gates", () => {
+test("direct Node command failure and output overflow cannot be successful gates", async () => {
   const directory = process.cwd();
-  const failed = command(
+  const failed = await command(
     process.execPath,
     ["-e", "process.exit(1)"],
     directory,
   );
   assert.equal(succeeded(failed), false);
-  const overflow = command(
+  const overflow = await command(
     process.execPath,
     ["-e", 'process.stdout.write("x".repeat(2000000))'],
     directory,
@@ -202,14 +202,14 @@ test("application self-modification in fresh tests is detected before external g
   assert.match(result.error.message, /Fresh validation source changed/);
 });
 
-test("external arbitrary checkout cannot invent a baseline from its current HEAD", (t) => {
+test("external arbitrary checkout cannot invent a baseline from its current HEAD", async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "deps-foreign-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   assert.throws(
     () => captureBaseline(directory),
     /Trusted original baseline required/,
   );
-  assert.throws(
+  await assert.rejects(
     () => changedPaths(directory),
     /Trusted original baseline required/,
   );

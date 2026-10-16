@@ -19,9 +19,11 @@ export { runCodex, captureBaseline, changedPaths };
 const root = resolve(dirname(fileURLToPath(import.meta.url)), ".."),
   seed = join(root, "seed"),
   grader = join(root, "grader/check.js");
-export async function createWorkspace() {
+export async function createWorkspace(options = {}) {
   const workspace = await mkdtemp(join(tmpdir(), "firedrill-codex-deps-"));
   try {
+    await options.onWorkspace?.(workspace);
+    options.signal?.throwIfAborted();
     await cp(seed, workspace, {
       recursive: true,
       filter: (path) => basename(path) !== "node_modules",
@@ -40,11 +42,16 @@ export async function createWorkspace() {
         "seed",
       ],
     ]) {
-      const result = command("git", args, workspace);
+      const result = await (options.runCommand ?? command)(
+        "git",
+        args,
+        workspace,
+        { signal: options.signal },
+      );
       if (!succeeded(result))
         throw new Error(`git ${args[0]} failed: ${result.stderr}`);
     }
-    rememberBaseline(workspace);
+    await rememberBaseline(workspace, options);
     return workspace;
   } catch (error) {
     await rm(workspace, { recursive: true, force: true });
@@ -54,9 +61,12 @@ export async function createWorkspace() {
 export async function verifyWorkspace(
   workspace,
   baseline = captureBaseline(workspace),
-  { signal } = {},
+  { signal, runCommand = command } = {},
 ) {
-  const checked = inspectScope(workspace, baseline),
+  const checked = await inspectScope(workspace, baseline, {
+      signal,
+      runCommand,
+    }),
     candidate = checked.source,
     invalid = new Set(checked.invalidPaths),
     paths = new Set(checked.paths);
@@ -72,8 +82,11 @@ export async function verifyWorkspace(
     passed: false,
   };
   let copy;
-  const recheck = () => {
-    const current = inspectScope(workspace, baseline);
+  const recheck = async () => {
+    const current = await inspectScope(workspace, baseline, {
+      signal,
+      runCommand,
+    });
     for (const file of current.paths) paths.add(file);
     for (const file of current.invalidPaths) invalid.add(file);
     if (!sameSource(candidate, current.source))
@@ -87,7 +100,7 @@ export async function verifyWorkspace(
   const guard = async () => {
     await new Promise((resolve) => setImmediate(resolve));
     signal?.throwIfAborted();
-    recheck();
+    await recheck();
   };
   try {
     signal?.throwIfAborted();
@@ -101,21 +114,25 @@ export async function verifyWorkspace(
     if (copy.snapshot_sha256 !== candidate.snapshot_sha256)
       throw new Error("Materialized candidate source differs");
     await guard();
-    result.install = command(
+    result.install = await runCommand(
       "npm",
       ["ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"],
       result.checkDir,
+      { signal },
     );
     await guard();
     if (succeeded(result.install)) {
-      result.tests = command("npm", ["test"], result.checkDir);
+      result.tests = await runCommand("npm", ["test"], result.checkDir, {
+        signal,
+      });
       await guard();
     }
     if (succeeded(result.tests)) {
-      result.hidden = command(
+      result.hidden = await runCommand(
         process.execPath,
         [grader, result.checkDir],
         root,
+        { signal },
       );
       await guard();
     }
@@ -140,6 +157,7 @@ export async function runMaintenance({
   agent = runCodex,
   model,
   timeoutMs,
+  codexPath,
   signal,
   outputRoot = ".runs",
   writer = saveReport,
@@ -158,6 +176,7 @@ export async function runMaintenance({
     agentError: null,
     verification: null,
     passed: false,
+    commands: [],
   };
   let recordingFailure = null;
   const save = async () => {
@@ -169,29 +188,61 @@ export async function runMaintenance({
       throw error;
     }
   };
+  const runCommand = async (name, args, cwd, options = {}) => {
+    const record = {
+      name,
+      args: [...args],
+      cwd,
+      status: "prepared",
+      prepared_at: new Date().toISOString(),
+      result: null,
+    };
+    report.commands.push(record);
+    await save();
+    signal?.throwIfAborted();
+    const result = await command(name, args, cwd, {
+      ...options,
+      signal: options.signal ?? signal,
+    });
+    record.result = result;
+    record.status = "finished";
+    await save();
+    return result;
+  };
   try {
     await save();
     signal?.throwIfAborted();
-    report.workspace = await createWorkspace();
+    report.workspace = await createWorkspace({
+      signal,
+      runCommand,
+      onWorkspace: async (workspace) => {
+        report.workspace = workspace;
+        await save();
+      },
+    });
     report.baseline = captureBaseline(report.workspace);
     await save();
     signal?.throwIfAborted();
-    report.baselineInstall = command(
+    report.baselineInstall = await runCommand(
       "npm",
       ["ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"],
       report.workspace,
+      { signal },
     );
     await new Promise((resolve) => setImmediate(resolve));
     signal?.throwIfAborted();
     report.baselineTest = succeeded(report.baselineInstall)
-      ? command("npm", ["test"], report.workspace)
+      ? await runCommand("npm", ["test"], report.workspace, { signal })
       : null;
     report.baselineValid =
       succeeded(report.baselineInstall) &&
       report.baselineTest?.exitCode === 1 &&
       !report.baselineTest.signal &&
       !report.baselineTest.error;
-    const prepared = inspectScope(report.workspace, report.baseline);
+    const prepared = await inspectScope(report.workspace, report.baseline, {
+      signal,
+      runCommand,
+    });
     if (prepared.paths.length)
       throw new Error("Preparation changed original source before the agent");
     await save();
@@ -203,6 +254,7 @@ export async function runMaintenance({
       report.agentResult = await agent(report.workspace, {
         model,
         timeoutMs,
+        cliPath: codexPath,
         signal,
         onObservation: async (observation) => {
           report.agentResult = observation;
@@ -223,7 +275,7 @@ export async function runMaintenance({
       report.verification = await verifyWorkspace(
         report.workspace,
         report.baseline,
-        { signal },
+        { signal, runCommand },
       );
     signal?.throwIfAborted();
     report.passed =

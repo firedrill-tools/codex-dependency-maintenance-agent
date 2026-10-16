@@ -1,6 +1,6 @@
 import { runMaintenance } from "./maintenance.js";
 const usage =
-  "Usage: npm run maintain -- [--model ENABLED_MODEL] [--output-root DIRECTORY]. OPENAI_API_KEY is required for a private isolated Codex runtime.";
+  "Usage: npm run maintain -- [--model ENABLED_MODEL] [--output-root DIRECTORY] [--codex-path EXECUTABLE] [--timeout-ms 10..180000]. OPENAI_API_KEY is required for a private isolated Codex runtime.";
 const args = process.argv.slice(2);
 try {
   if (args.length === 1 && args[0] === "--help") console.log(usage);
@@ -10,12 +10,21 @@ try {
       const key = args[index],
         value = args[index + 1];
       if (
-        !["--model", "--output-root"].includes(key) ||
+        !["--model", "--output-root", "--codex-path", "--timeout-ms"].includes(
+          key,
+        ) ||
         !value ||
         value.startsWith("--") ||
         Object.hasOwn(config, key)
       )
         throw new Error(usage);
+      if (
+        key === "--timeout-ms" &&
+        (!/^[1-9][0-9]*$/.test(value) ||
+          Number(value) < 10 ||
+          Number(value) > 180000)
+      )
+        throw new Error("--timeout-ms must be10–180000");
       config[key] = value;
     }
     const controller = new AbortController();
@@ -33,6 +42,11 @@ try {
     try {
       const result = await runMaintenance({
         model: config["--model"],
+        codexPath: config["--codex-path"],
+        timeoutMs:
+          config["--timeout-ms"] === undefined
+            ? undefined
+            : Number(config["--timeout-ms"]),
         outputRoot: config["--output-root"],
         signal: controller.signal,
       });

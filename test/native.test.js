@@ -138,7 +138,7 @@ for (const mode of [
       await assert.rejects(
         runCodex(f.directory, {
           sdk: f.sdk,
-          timeoutMs: mode === "hang" ? 300 : 5000,
+          timeoutMs: mode === "hang" ? 1000 : 5000,
           onObservation: (value) => {
             observation = structuredClone(value);
           },

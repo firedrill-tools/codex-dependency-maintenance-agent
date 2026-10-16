@@ -132,9 +132,14 @@ export function snapshot(workspace) {
     problems,
   };
 }
-export function rememberBaseline(workspace) {
+export async function rememberBaseline(workspace, options = {}) {
   const source = snapshot(workspace),
-    head = command("git", ["rev-parse", "--verify", "HEAD"], source.workspace);
+    head = await (options.runCommand ?? command)(
+      "git",
+      ["rev-parse", "--verify", "HEAD"],
+      source.workspace,
+      { signal: options.signal },
+    );
   if (
     !succeeded(head) ||
     !/^[a-f0-9]{40,64}$/.test(head.stdout.trim()) ||
@@ -162,10 +167,11 @@ export function captureBaseline(workspace) {
     );
   return structuredClone(baseline);
 }
-export function changedPaths(
+export async function changedPaths(
   workspace,
   baseline = captureBaseline(workspace),
   captured,
+  options = {},
 ) {
   if (
     !baseline ||
@@ -188,7 +194,8 @@ export function changedPaths(
   for (const name of new Set([...original.keys(), ...current.keys()]))
     if (canonical(original.get(name)) !== canonical(current.get(name)))
       paths.add(name);
-  const tracked = command(
+  if (options.signal?.aborted) return [...paths].sort();
+  const tracked = await (options.runCommand ?? command)(
     "git",
     [
       "diff",
@@ -201,6 +208,7 @@ export function changedPaths(
       "--",
     ],
     source.workspace,
+    { signal: options.signal },
   );
   if (!succeeded(tracked))
     throw new Error("Unable to inspect original Git baseline");
@@ -208,9 +216,13 @@ export function changedPaths(
     paths.add(name);
   return [...paths].sort();
 }
-export function inspectScope(workspace, baseline = captureBaseline(workspace)) {
+export async function inspectScope(
+  workspace,
+  baseline = captureBaseline(workspace),
+  options = {},
+) {
   const source = snapshot(workspace),
-    paths = changedPaths(workspace, baseline, source),
+    paths = await changedPaths(workspace, baseline, source, options),
     original = new Map(baseline.tree.map((item) => [item.path, item]));
   const invalidPaths = paths.filter((name) => {
     const entry = source.tree.find((item) => item.path === name),
