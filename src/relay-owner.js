@@ -5,7 +5,8 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
-import { processAlive, groupAlive } from "./processes.js";
+import { processAlive, groupAlive } from "./pids.js";
+import { ProcessTree } from "./process-tree.js";
 const require = createRequire(import.meta.url),
   hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 async function fileHash(file, signal) {
@@ -55,6 +56,7 @@ export class RelayOwner {
       kill_sent: false,
       relay_exit_confirmed: null,
       group_exit_confirmed: null,
+      descendants_exit_confirmed: null,
     };
   }
   static async create({ cwd, cliPath, timeoutMs, startupDelayMs = 0, signal }) {
@@ -235,6 +237,7 @@ export class RelayOwner {
         not_dispatched: true,
         relay_exit_confirmed: true,
         group_exit_confirmed: true,
+        descendants_exit_confirmed: true,
       });
       return;
     }
@@ -243,48 +246,71 @@ export class RelayOwner {
     this.lifecycle.stop_reason = String(reason);
     this.stopPromise = (async () => {
       const began = performance.now();
-      let sawRelay = false;
-      const sent = new Set();
+      let tree,
+        sent = false,
+        emergency = false,
+        escalatedAt = null;
       for (;;) {
         const state = this.state();
         if (state) {
-          sawRelay = true;
-          const relay = state.relay_pid,
-            group = state.process?.pgid;
-          let relayUp = processAlive(relay),
-            groupUp = groupAlive(group);
-          if (!relayUp && !groupUp) {
-            this.lifecycle.relay_exit_confirmed = true;
-            this.lifecycle.group_exit_confirmed = true;
-            break;
+          const relay = state.relay_pid;
+          if (!tree)
+            tree = new ProcessTree(relay, {
+              rootGroupOwned: false,
+              seedGroups:
+                state.process?.tree?.groups ??
+                (state.process?.pgid ? [state.process.pgid] : []),
+              seedMembers: state.process?.tree?.members ?? [],
+            });
+          try {
+            await tree.sample();
+          } catch (error) {
+            this.lifecycle.inventory_error = {
+              name: error.name,
+              message: error.message,
+            };
+            tree.complete = false;
           }
-          for (const [pid, isGroup] of [
-            [group, true],
-            [relay, false],
-          ])
-            if (Number.isSafeInteger(pid) && pid > 1) {
-              const signal =
-                  performance.now() - began < (isGroup ? 250 : 750)
-                    ? "SIGTERM"
-                    : "SIGKILL",
-                key = `${isGroup ? "group" : "relay"}:${pid}:${signal}`;
-              if (sent.has(key)) continue;
-              sent.add(key);
-              try {
-                process.kill(isGroup ? -pid : pid, signal);
-                if (signal === "SIGTERM") this.lifecycle.term_sent = true;
-                else this.lifecycle.kill_sent = true;
-              } catch (error) {
-                if (!["ESRCH", "EPERM"].includes(error.code)) throw error;
-              }
+          this.lifecycle.tree = tree.status();
+          this.lifecycle.relay_exit_confirmed = !processAlive(relay);
+          this.lifecycle.group_exit_confirmed = !groupAlive(
+            state.process?.pgid,
+          );
+          this.lifecycle.descendants_exit_confirmed =
+            this.lifecycle.tree.exit_confirmed;
+          if (
+            this.lifecycle.relay_exit_confirmed &&
+            this.lifecycle.group_exit_confirmed &&
+            this.lifecycle.descendants_exit_confirmed
+          )
+            break;
+          // Let the relay freeze its target and tool jobs before any target is killed.
+          if (!sent) {
+            sent = true;
+            tree.signal(relay, "SIGTERM", false);
+            this.lifecycle.term_sent = true;
+          }
+          if (!emergency && performance.now() - began >= 2000) {
+            emergency = true;
+            try {
+              await tree.freeze();
+            } catch (error) {
+              this.lifecycle.quarantine_error = {
+                name: error.name,
+                message: error.message,
+              };
             }
+            tree.terminate();
+            escalatedAt = performance.now();
+            this.lifecycle.emergency_tree_cleanup = true;
+          }
+          if (emergency && performance.now() - escalatedAt >= 200) {
+            tree.kill();
+            this.lifecycle.kill_sent = true;
+          }
         }
-        if (performance.now() - began > 5000) {
-          this.lifecycle.relay_exit_confirmed = sawRelay ? false : null;
-          this.lifecycle.group_exit_confirmed = sawRelay ? false : null;
-          break;
-        }
-        await sleep(20);
+        if (performance.now() - began > 5000) break;
+        await sleep(25);
       }
     })();
     return this.stopPromise;
@@ -295,18 +321,23 @@ export class RelayOwner {
         not_dispatched: true,
         relay_exit_confirmed: true,
         group_exit_confirmed: true,
+        descendants_exit_confirmed: true,
       });
       return this.read();
     }
     const state = this.state();
-    if (state) {
+    if (state && !this.stopPromise) {
       this.lifecycle.relay_exit_confirmed = !processAlive(state.relay_pid);
       this.lifecycle.group_exit_confirmed = !groupAlive(state.process?.pgid);
+      this.lifecycle.descendants_exit_confirmed =
+        state.process?.descendants_exit_confirmed === true;
+      this.lifecycle.tree = state.process?.tree ?? null;
     }
     if (
       failed ||
       this.lifecycle.relay_exit_confirmed !== true ||
-      this.lifecycle.group_exit_confirmed !== true
+      this.lifecycle.group_exit_confirmed !== true ||
+      this.lifecycle.descendants_exit_confirmed !== true
     )
       await this.stop(
         failed ? "native operation failed" : "owned residue after SDK EOF",
@@ -314,9 +345,10 @@ export class RelayOwner {
     const report = this.read();
     if (
       this.lifecycle.relay_exit_confirmed !== true ||
-      this.lifecycle.group_exit_confirmed !== true
+      this.lifecycle.group_exit_confirmed !== true ||
+      this.lifecycle.descendants_exit_confirmed !== true
     )
-      report.cleanup_error = "Owned relay/group exit was not confirmed";
+      report.cleanup_error = "Owned relay/process tree exit was not confirmed";
     if (report.state?.result?.error)
       report.execution_error = report.state.result.error;
     if (!failed && report.state?.status !== "finished")

@@ -52,4 +52,5 @@ export const succeeded = (result) =>
   result.exitCode === 0 &&
   !result.signal &&
   !result.error &&
-  result.lifecycle?.group_exit_confirmed === true;
+  result.lifecycle?.group_exit_confirmed === true &&
+  result.lifecycle?.descendants_exit_confirmed === true;

@@ -64,6 +64,8 @@ export async function runCodex(workspace, options = {}) {
         : "owned_native_sdk",
     process_ownership: options.sdk ? "caller SDK" : "preflight",
     requested_model: options.model ?? null,
+    provider_base_url: null,
+    diagnostics: [],
     actual_model: { status: "unknown", id: null },
     started_at: new Date().toISOString(),
     completed: false,
@@ -146,6 +148,24 @@ export async function runCodex(workspace, options = {}) {
       (!label(options.model) || /\s/.test(options.model))
     )
       throw new Error("Enabled model name required");
+    if (options.baseUrl !== undefined) {
+      const url = new URL(options.baseUrl);
+      if (
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash ||
+        !(
+          url.protocol === "https:" ||
+          (url.protocol === "http:" &&
+            ["127.0.0.1", "[::1]", "localhost"].includes(url.hostname))
+        )
+      )
+        throw new Error(
+          "Provider base URL requires HTTPS or loopback HTTP without credentials/query/fragment",
+        );
+      observation.provider_base_url = url.href;
+    }
     let sdk = options.sdk;
     if (!sdk) {
       const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
@@ -163,7 +183,11 @@ export async function runCodex(workspace, options = {}) {
       for (const key of ["SystemRoot", "WINDIR"])
         if (process.env[key]) env[key] = process.env[key];
       if (options.sdkFactory) {
-        sdk = options.sdkFactory({ apiKey, env });
+        sdk = options.sdkFactory({
+          apiKey,
+          env,
+          ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
+        });
         observation.process_ownership = "caller SDK factory";
       } else {
         relayOwner = await RelayOwner.create({
@@ -177,6 +201,7 @@ export async function runCodex(workspace, options = {}) {
         observation.cli = relayOwner.read();
         sdk = new Codex({
           apiKey,
+          ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
           env: {
             ...env,
             FIREDRILL_RELAY_CONFIG: path.join(
@@ -267,7 +292,12 @@ export async function runCodex(workspace, options = {}) {
             event.type,
           )
         ) {
-          if (!turnStarted || !object(event.item) || !label(event.item.id))
+          if (
+            !threadStarted ||
+            !object(event.item) ||
+            !label(event.item.id) ||
+            (!turnStarted && event.item.type !== "error")
+          )
             throw new Error("Invalid item before active turn");
           const item = event.item;
           if (["command_execution", "file_change"].includes(item.type))
@@ -297,8 +327,18 @@ export async function runCodex(workspace, options = {}) {
           if (item.type === "agent_message" || item.type === "reasoning")
             if (typeof item.text !== "string")
               throw new Error("Invalid SDK message text");
-          if (item.type === "error")
-            throw new Error(item.message ?? "SDK error item");
+          if (item.type === "error") {
+            if (
+              event.type !== "item.completed" ||
+              typeof item.message !== "string"
+            )
+              throw new Error("Invalid diagnostic item");
+            observation.diagnostics.push({
+              source: "SDK error item",
+              event_index: observation.events.length - 1,
+              message: item.message,
+            });
+          }
           if (event.type === "item.completed") {
             if (
               ["command_execution", "file_change"].includes(item.type) &&
@@ -317,7 +357,15 @@ export async function runCodex(workspace, options = {}) {
           if (!turnStarted || pending.size || !observation.finalResponse.trim())
             throw new Error("Turn lacks final answer or has pending work");
           finished = true;
-        } else if (event.type === "turn.failed" || event.type === "error")
+        } else if (event.type === "error") {
+          if (!threadStarted || typeof event.message !== "string")
+            throw new Error("Invalid runtime diagnostic");
+          observation.diagnostics.push({
+            source: "SDK runtime diagnostic",
+            event_index: observation.events.length - 1,
+            message: event.message,
+          });
+        } else if (event.type === "turn.failed")
           throw new Error(
             event.error?.message ?? event.message ?? "Codex failed",
           );
@@ -421,7 +469,8 @@ export async function runCodex(workspace, options = {}) {
           observation.iterator_return_settled !== false) ||
         (relayOwner &&
           observation.cli?.lifecycle.group_exit_confirmed === true &&
-          observation.cli?.lifecycle.relay_exit_confirmed === true)
+          observation.cli?.lifecycle.relay_exit_confirmed === true &&
+          observation.cli?.lifecycle.descendants_exit_confirmed === true)
       ) {
         await fs.rm(runtimeHome, { recursive: true, force: true });
         observation.runtime_home_removed = true;

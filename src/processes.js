@@ -1,26 +1,7 @@
 import { spawn } from "node:child_process";
-export const processAlive = (pid) => {
-  if (!Number.isSafeInteger(pid) || pid <= 1) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error.code === "ESRCH") return false;
-    if (error.code === "EPERM") return true;
-    throw error;
-  }
-};
-export const groupAlive = (pid) => {
-  if (!Number.isSafeInteger(pid) || pid <= 1) return false;
-  try {
-    process.kill(-pid, 0);
-    return true;
-  } catch (error) {
-    if (error.code === "ESRCH") return false;
-    if (error.code === "EPERM") return true;
-    throw error;
-  }
-};
+import { ProcessTree } from "./process-tree.js";
+import { processAlive, groupAlive } from "./pids.js";
+export { processAlive, groupAlive };
 const info = (error) => ({
   name: error?.name ?? "Error",
   message: error?.message ?? String(error),
@@ -62,26 +43,17 @@ export async function runProcess({
     exit_observed: false,
     close_observed: false,
     group_exit_confirmed: false,
+    descendants_exit_confirmed: false,
     term_sent: false,
     kill_sent: false,
     reason: null,
     parent_listener_removed: false,
+    tree: null,
   };
-  const stdout = [],
-    stderr = [];
-  let outBytes = 0,
-    errBytes = 0,
-    inBytes = 0,
-    child,
-    error = null,
-    exitCode = null,
-    exitSignal = null,
-    stopAt = null,
-    exitedAt = null,
-    settled = false;
   if (signal?.aborted) {
     lifecycle.reason = info(signal.reason ?? new Error("Process cancelled"));
     lifecycle.group_exit_confirmed = true;
+    lifecycle.descendants_exit_confirmed = true;
     lifecycle.parent_listener_removed = true;
     return {
       exitCode: null,
@@ -93,32 +65,59 @@ export async function runProcess({
     };
   }
   return await new Promise((resolve) => {
-    let interval, timer;
+    const stdout = [],
+      stderr = [];
+    let outBytes = 0,
+      errBytes = 0,
+      inBytes = 0,
+      child,
+      tree,
+      error = null,
+      exitCode = null,
+      exitSignal = null,
+      stopAt = null,
+      termAt = null,
+      exitedAt = null,
+      settled = false,
+      checking = false,
+      freezeDone = true,
+      nextSample = 0,
+      timer,
+      interval;
     const notify = () => {
+      if (settled) return;
       try {
-        onState?.({ ...lifecycle });
+        onState?.(structuredClone(lifecycle));
       } catch (fault) {
         stop(fault);
       }
     };
-    const send = (name) => {
-      if (!lifecycle.pgid) return;
-      try {
-        process.kill(-lifecycle.pgid, name);
-        if (name === "SIGTERM") lifecycle.term_sent = true;
-        else lifecycle.kill_sent = true;
-      } catch (fault) {
-        if (!["ESRCH", "EPERM"].includes(fault.code)) error ??= info(fault);
-      }
-    };
     function stop(reason) {
-      if (settled) return;
-      if (stopAt === null) {
-        error ??= info(reason);
-        lifecycle.reason ??= info(reason);
-        stopAt = performance.now();
-        send("SIGTERM");
-      }
+      if (settled || stopAt !== null) return;
+      error ??= info(reason);
+      lifecycle.reason ??= info(reason);
+      stopAt = performance.now();
+      freezeDone = false;
+      void (async () => {
+        try {
+          if (tree) {
+            await tree.freeze({ deadline: stopAt + 1500 });
+            lifecycle.tree = tree.status();
+            tree.terminate();
+            lifecycle.term_sent = true;
+          }
+          termAt = performance.now();
+        } catch (fault) {
+          lifecycle.inventory_error = info(fault);
+          error ??= info(fault);
+          tree?.kill();
+          lifecycle.kill_sent = true;
+        } finally {
+          freezeDone = true;
+          notify();
+          void check(true);
+        }
+      })();
     }
     const cancelled = () =>
       stop(signal.reason ?? new Error("Process cancelled"));
@@ -164,7 +163,7 @@ export async function runProcess({
       }
       lifecycle.finished_at = new Date().toISOString();
       try {
-        onState?.({ ...lifecycle });
+        onState?.(structuredClone(lifecycle));
       } catch (fault) {
         error ??= info(fault);
       }
@@ -174,41 +173,82 @@ export async function runProcess({
         error,
         stdout: Buffer.concat(stdout).toString("utf8"),
         stderr: Buffer.concat(stderr).toString("utf8"),
-        lifecycle: { ...lifecycle },
+        lifecycle: structuredClone(lifecycle),
       });
     }
-    const check = () => {
-      if (settled) return;
-      let alive = false;
+    async function check(force = false) {
+      if (settled || checking) return;
+      checking = true;
       try {
-        alive = groupAlive(lifecycle.pgid);
+        const now = performance.now();
+        if (
+          tree &&
+          (force ||
+            now >= nextSample ||
+            stopAt !== null ||
+            lifecycle.close_observed)
+        ) {
+          await tree.sample();
+          nextSample = performance.now() + 100;
+          const previousGroups = JSON.stringify(
+            lifecycle.tree?.observed_groups,
+          );
+          lifecycle.tree = tree.status();
+          if (previousGroups !== JSON.stringify(lifecycle.tree.observed_groups))
+            notify();
+          lifecycle.descendants_exit_confirmed = lifecycle.tree.exit_confirmed;
+        } else if (!tree) lifecycle.descendants_exit_confirmed = true;
+        lifecycle.group_exit_confirmed = !groupAlive(lifecycle.pgid);
+        if (
+          lifecycle.exit_observed &&
+          !lifecycle.descendants_exit_confirmed &&
+          stopAt === null &&
+          performance.now() - exitedAt > 200
+        )
+          stop(new Error("Owned descendants outlived the command"));
+        if (
+          stopAt !== null &&
+          freezeDone &&
+          termAt !== null &&
+          !lifecycle.descendants_exit_confirmed
+        ) {
+          if (performance.now() - termAt >= termGraceMs) {
+            tree?.kill();
+            lifecycle.kill_sent = true;
+          } else tree?.terminate();
+        }
+        if (
+          lifecycle.close_observed &&
+          lifecycle.group_exit_confirmed &&
+          lifecycle.descendants_exit_confirmed &&
+          freezeDone
+        )
+          finish();
+        else if (
+          stopAt !== null &&
+          freezeDone &&
+          performance.now() - stopAt >= cleanupMs
+        ) {
+          error ??= info(
+            new Error("Process tree cleanup could not be confirmed"),
+          );
+          finish();
+        }
       } catch (fault) {
+        lifecycle.inventory_error = info(fault);
+        if (tree) tree.complete = false;
+        lifecycle.descendants_exit_confirmed = false;
         stop(fault);
-        alive = true;
+        if (
+          stopAt !== null &&
+          freezeDone &&
+          performance.now() - stopAt >= cleanupMs
+        )
+          finish();
+      } finally {
+        checking = false;
       }
-      lifecycle.group_exit_confirmed = !alive;
-      if (
-        lifecycle.exit_observed &&
-        alive &&
-        stopAt === null &&
-        performance.now() - exitedAt > 200
-      )
-        stop(new Error("Owned descendants outlived the command"));
-      if (
-        stopAt !== null &&
-        alive &&
-        performance.now() - stopAt >= termGraceMs &&
-        !lifecycle.kill_sent
-      ) {
-        send("SIGKILL");
-        notify();
-      }
-      if (lifecycle.close_observed && !alive) finish();
-      else if (stopAt !== null && performance.now() - stopAt >= cleanupMs) {
-        error ??= info(new Error("Process cleanup could not be confirmed"));
-        finish();
-      }
-    };
+    }
     try {
       child = spawn(program, args, {
         cwd,
@@ -218,6 +258,7 @@ export async function runProcess({
       });
       lifecycle.pid = child.pid ?? null;
       lifecycle.pgid = child.pid ?? null;
+      if (child.pid) tree = new ProcessTree(child.pid);
       child.on("error", (fault) => {
         error ??= info(fault);
         stop(fault);
@@ -225,17 +266,18 @@ export async function runProcess({
       child.once("spawn", () => {
         lifecycle.spawned = true;
         notify();
+        void check(true);
       });
       child.once("exit", (code, killed) => {
         exitCode = code;
         exitSignal = killed;
         lifecycle.exit_observed = true;
         exitedAt = performance.now();
-        setImmediate(check);
+        void check(true);
       });
       child.once("close", () => {
         lifecycle.close_observed = true;
-        check();
+        void check(true);
       });
       const capture = (chunks, maximum, kind, callback) => (bytes) => {
         if (settled) return;
@@ -271,12 +313,15 @@ export async function runProcess({
         () => stop(new Error("Process deadline exceeded")),
         timeoutMs,
       );
-      interval = setInterval(check, 20);
+      interval = setInterval(() => {
+        void check();
+      }, 20);
     } catch (fault) {
       error = info(fault);
       lifecycle.reason = info(fault);
       lifecycle.close_observed = true;
       lifecycle.group_exit_confirmed = true;
+      lifecycle.descendants_exit_confirmed = true;
       finish();
     }
   });

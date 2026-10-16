@@ -158,6 +158,7 @@ export async function runMaintenance({
   model,
   timeoutMs,
   codexPath,
+  providerBaseUrl,
   signal,
   outputRoot = ".runs",
   writer = saveReport,
@@ -255,6 +256,7 @@ export async function runMaintenance({
         model,
         timeoutMs,
         cliPath: codexPath,
+        baseUrl: providerBaseUrl,
         signal,
         onObservation: async (observation) => {
           report.agentResult = observation;

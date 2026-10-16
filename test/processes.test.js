@@ -110,3 +110,68 @@ test("validator commands remove provider keys without mutating the caller enviro
     else process.env.OPENAI_API_KEY = before;
   }
 });
+
+test(
+  "cancellation owns a separate job group and its TERM-ignoring grandchild",
+  { timeout: 15000 },
+  async (t) => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "deps-separate-job-"),
+    );
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const record = path.join(directory, "job.json"),
+      controller = new AbortController();
+    const worker = `const {spawn}=require('node:child_process');process.on('SIGTERM',()=>{});const child=spawn(process.execPath,['-e','process.on("SIGTERM",()=>{});setInterval(()=>{},1000)'],{stdio:'ignore'});require('node:fs').writeFileSync(${JSON.stringify(record)},JSON.stringify({pid:process.pid,grandchild:child.pid}));setInterval(()=>{},1000);`;
+    const source = `const {spawn}=require('node:child_process');process.on('SIGTERM',()=>{});spawn(process.execPath,['-e',${JSON.stringify(worker)}],{detached:true,stdio:'ignore'});setInterval(()=>{},1000);`;
+    t.after(() => {
+      if (fs.existsSync(record))
+        for (const pid of Object.values(JSON.parse(fs.readFileSync(record))))
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch {}
+    });
+    const result = await run(source, {
+      timeoutMs: 10000,
+      signal: controller.signal,
+      onState: (state) => {
+        if (state.tree?.observed_groups.length >= 2 && fs.existsSync(record))
+          controller.abort(new Error("Separate job cancellation"));
+      },
+    });
+    assert.match(result.error.message, /Separate job cancellation/);
+    assert.equal(result.lifecycle.descendants_exit_confirmed, true);
+    assert.equal(result.lifecycle.tree.freeze_completed, true);
+    assert.ok(result.lifecycle.tree.observed_groups.length >= 2);
+    for (const pid of Object.values(JSON.parse(fs.readFileSync(record))))
+      assert.equal(processAlive(pid), false);
+  },
+);
+
+test(
+  "a command that exits with a previously observed separate job fails and drains that job",
+  { timeout: 15000 },
+  async (t) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "deps-residue-")),
+      record = path.join(directory, "job"),
+      exitFile = path.join(directory, "exit");
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const worker = `process.on('SIGTERM',()=>{});require('node:fs').writeFileSync(${JSON.stringify(record)},String(process.pid));setInterval(()=>{},1000);`;
+    const source = `const fs=require('node:fs'),{spawn}=require('node:child_process');const child=spawn(process.execPath,['-e',${JSON.stringify(worker)}],{detached:true,stdio:'ignore'});child.unref();setInterval(()=>{if(fs.existsSync(${JSON.stringify(exitFile)}))process.exit(0)},20);`;
+    t.after(() => {
+      if (fs.existsSync(record))
+        try {
+          process.kill(Number(fs.readFileSync(record)), "SIGKILL");
+        } catch {}
+    });
+    const result = await run(source, {
+      timeoutMs: 10000,
+      onState: (state) => {
+        if (state.tree?.observed_groups.length >= 2)
+          fs.writeFileSync(exitFile, "exit");
+      },
+    });
+    assert.match(result.error.message, /outlived/);
+    assert.equal(result.lifecycle.descendants_exit_confirmed, true);
+    assert.equal(processAlive(Number(fs.readFileSync(record))), false);
+  },
+);

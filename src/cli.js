@@ -1,6 +1,6 @@
 import { runMaintenance } from "./maintenance.js";
 const usage =
-  "Usage: npm run maintain -- [--model ENABLED_MODEL] [--output-root DIRECTORY] [--codex-path EXECUTABLE] [--timeout-ms 10..180000]. OPENAI_API_KEY is required for a private isolated Codex runtime.";
+  "Usage: npm run maintain -- [--model ENABLED_MODEL] [--output-root DIRECTORY] [--codex-path EXECUTABLE] [--timeout-ms 10..180000] [--provider-base-url URL]. OPENAI_API_KEY is required for a private isolated Codex runtime.";
 const args = process.argv.slice(2);
 try {
   if (args.length === 1 && args[0] === "--help") console.log(usage);
@@ -10,9 +10,13 @@ try {
       const key = args[index],
         value = args[index + 1];
       if (
-        !["--model", "--output-root", "--codex-path", "--timeout-ms"].includes(
-          key,
-        ) ||
+        ![
+          "--model",
+          "--output-root",
+          "--codex-path",
+          "--timeout-ms",
+          "--provider-base-url",
+        ].includes(key) ||
         !value ||
         value.startsWith("--") ||
         Object.hasOwn(config, key)
@@ -43,6 +47,7 @@ try {
       const result = await runMaintenance({
         model: config["--model"],
         codexPath: config["--codex-path"],
+        providerBaseUrl: config["--provider-base-url"],
         timeoutMs:
           config["--timeout-ms"] === undefined
             ? undefined

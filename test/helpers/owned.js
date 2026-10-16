@@ -11,7 +11,7 @@ export function fixture(t, mode) {
 const fs=require('node:fs'),path=require('node:path'),{spawn,execFileSync}=require('node:child_process');
 const mode=MODE,record=RECORD,args=process.argv.slice(2),workspace=args[args.indexOf('--cd')+1];
 fs.writeFileSync(record,JSON.stringify({pid:process.pid,args,env_keys:Object.keys(process.env)}));
-process.on('SIGTERM',()=>{if(!['ignore','grandchild','late','upgrade-hold'].includes(mode))process.exit(143);});
+process.on('SIGTERM',()=>{if(!['ignore','grandchild','detached-grandchild','late','upgrade-hold'].includes(mode))process.exit(143);});
 process.stdin.resume();process.stdin.on('end',()=>{
  const send=event=>console.log(JSON.stringify(event));
  send({type:'thread.started',thread_id:'synthetic-thread',extra:{original:true}});send({type:'turn.started'});
@@ -23,11 +23,11 @@ process.stdin.resume();process.stdin.on('end',()=>{
    fs.writeFileSync(record,JSON.stringify({pid:process.pid,args,stage:'upgraded'}));
  }
  if(mode==='failed-after-edit'){send({type:'turn.failed',error:{message:'Original CLI failed after edits'},usage:{input_tokens:7,output_tokens:0}});return;}
- if(mode==='grandchild'){
-   const child=spawn(process.execPath,['-e','process.on("SIGTERM",()=>{});setInterval(()=>{},1000)'],{stdio:'ignore'});
+ if(['grandchild','detached-grandchild'].includes(mode)){
+   const child=spawn(process.execPath,['-e','process.on("SIGTERM",()=>{});setInterval(()=>{},1000)'],{detached:mode==='detached-grandchild',stdio:'ignore'});
    fs.writeFileSync(record,JSON.stringify({pid:process.pid,grandchild:child.pid,args}));
  }
- if(['ignore','grandchild','late','upgrade-hold'].includes(mode)){
+ if(['ignore','grandchild','detached-grandchild','late','upgrade-hold'].includes(mode)){
    if(mode==='late')setTimeout(()=>send({type:'item.completed',item:{id:'late',type:'agent_message',text:'Too late'}}),1500);
    setInterval(()=>{},1000);return;
  }

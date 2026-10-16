@@ -348,3 +348,76 @@ test(
     assert.equal(observed.cli, undefined);
   },
 );
+
+test(
+  "parent emergency cleanup drains separate jobs when the relay is itself stopped",
+  { timeout: 20000 },
+  async (t) => {
+    const f = fixture(t, "detached-grandchild"),
+      controller = new AbortController();
+    let observed, relay, target;
+    t.after(() => {
+      for (const pid of [relay, target?.pid, target?.grandchild])
+        if (pid)
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch {}
+    });
+    const operation = runCodex(f.directory, {
+      ...options(f),
+      timeoutMs: 15000,
+      signal: controller.signal,
+      onObservation: (value) => {
+        observed = structuredClone(value);
+        relay = value.cli?.state?.relay_pid ?? relay;
+      },
+    });
+    const deadline = performance.now() + 7000;
+    while (
+      !relay ||
+      !fs.existsSync(f.record) ||
+      !JSON.parse(fs.readFileSync(f.record)).grandchild
+    ) {
+      if (performance.now() > deadline)
+        throw new Error("Separate job was not prepared");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    target = JSON.parse(fs.readFileSync(f.record));
+    process.kill(relay, "SIGSTOP");
+    controller.abort(new Error("Stopped relay cancellation"));
+    await assert.rejects(operation, /Stopped relay cancellation/);
+    assert.equal(observed.cli.lifecycle.emergency_tree_cleanup, true);
+    assert.equal(observed.cli.lifecycle.descendants_exit_confirmed, true);
+    assert.ok(observed.cli.lifecycle.tree.observed_groups.length >= 2);
+    exited(f, observed);
+  },
+);
+
+test("unsafe provider base URL is rejected before SDK dispatch and credentials stay out of evidence", async () => {
+  for (const baseUrl of [
+    "http://example.com/v1",
+    "https://user:synthetic-secret@example.com/v1",
+    "https://example.com/v1?token=synthetic-secret",
+    "https://example.com/v1#synthetic-secret",
+  ]) {
+    let called = false,
+      observed;
+    await assert.rejects(
+      runCodex(os.tmpdir(), {
+        apiKey: "synthetic-key",
+        baseUrl,
+        sdkFactory: () => {
+          called = true;
+          throw new Error("must not dispatch");
+        },
+        onObservation: (value) => {
+          observed = structuredClone(value);
+        },
+      }),
+      /Provider base URL/,
+    );
+    assert.equal(called, false);
+    assert.equal(observed.provider_base_url, null);
+    assert.equal(JSON.stringify(observed).includes("synthetic-secret"), false);
+  }
+});
