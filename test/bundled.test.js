@@ -21,8 +21,11 @@ test(
   "actual bundled SDK/CLI executes an upgrade through controlled HTTP SSE and normal private CLI validation",
   { timeout: 120000 },
   async (t) => {
-    const source = `const fs=require('node:fs'),{execFileSync}=require('node:child_process');const pkg=JSON.parse(fs.readFileSync('package.json'));pkg.dependencies.formatkit='file:vendor/formatkit-v2';fs.writeFileSync('package.json',JSON.stringify(pkg,null,2));const file='src/report.js';fs.writeFileSync(file,fs.readFileSync(file,'utf8').replace('import { formatMoney }','import { formatCurrency }').replace('formatMoney(totalMinorUnits, currency)','formatCurrency({ minorUnits: totalMinorUnits, currency })'));execFileSync('npm',['install','--offline','--ignore-scripts'],{stdio:'pipe'});console.log('bundled-upgrade-proof');`;
-    const provider = await bundledProvider(t, nodeCommand(source));
+    const source = `const fs=require('node:fs');const pkg=JSON.parse(fs.readFileSync('package.json'));pkg.dependencies.formatkit='file:vendor/formatkit-v2';fs.writeFileSync('package.json',JSON.stringify(pkg,null,2));const file='src/report.js';fs.writeFileSync(file,fs.readFileSync(file,'utf8').replace('import { formatMoney }','import { formatCurrency }').replace('formatMoney(totalMinorUnits, currency)','formatCurrency({ minorUnits: totalMinorUnits, currency })'));`;
+    const provider = await bundledProvider(
+      t,
+      `set -e\n${nodeCommand(source)}\nnpm install --offline --ignore-scripts\n${nodeCommand("console.log('bundled-upgrade-proof')")}`,
+    );
     const env = {
       ...childEnvironment(),
       OPENAI_API_KEY: "synthetic-not-a-paid-key",
@@ -91,8 +94,7 @@ test(
     assert.ok(provider.posts >= 2);
     assert.deepEqual(provider.faults, []);
     assert.equal(provider.requests[0].model, "synthetic-offline");
-    // Linux may omit command items from CLI JSONL. The original upstream tool-result
-    // request and independently validated source establish actual tool execution.
+    // Bind actual tool execution to its original upstream result and validated source.
     const toolOutputs = provider.requests
       .flatMap((request) => request.input ?? [])
       .filter((item) => item.type === "function_call_output")
