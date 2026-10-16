@@ -91,13 +91,23 @@ test(
     assert.ok(provider.posts >= 2);
     assert.deepEqual(provider.faults, []);
     assert.equal(provider.requests[0].model, "synthetic-offline");
+    // Linux may omit command items from CLI JSONL. The original upstream tool-result
+    // request and independently validated source establish actual tool execution.
+    const toolOutputs = provider.requests
+      .flatMap((request) => request.input ?? [])
+      .filter((item) => item.type === "function_call_output")
+      .map((item) =>
+        typeof item.output === "string"
+          ? item.output
+          : JSON.stringify(item.output),
+      );
     assert.ok(
-      report.agentResult.cli.records.some(
-        (r) =>
-          r.body?.item?.type === "command_execution" &&
-          r.body.item.aggregated_output.includes("bundled-upgrade-proof") &&
-          r.body.item.exit_code === 0,
+      toolOutputs.some(
+        (output) =>
+          output.includes("bundled-upgrade-proof") &&
+          output.includes("Process exited with code 0"),
       ),
+      JSON.stringify(toolOutputs),
     );
     assert.ok(report.agentResult.diagnostics.length > 0);
     assert.equal(
