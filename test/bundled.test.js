@@ -44,9 +44,26 @@ test(
       env,
       timeoutMs: 110000,
     });
-    assert.equal(result.exitCode, 0, JSON.stringify(result));
     const summary = JSON.parse(result.stdout),
       report = JSON.parse(fs.readFileSync(summary.reportPath));
+    const toolEvidence = report.agentResult?.events
+      .filter((event) => event.item?.type === "command_execution")
+      .map((event) => ({
+        type: event.type,
+        item: {
+          ...event.item,
+          aggregated_output: event.item.aggregated_output?.slice(-4000),
+        },
+      }));
+    assert.equal(
+      result.exitCode,
+      0,
+      JSON.stringify({
+        summary,
+        toolEvidence,
+        agentError: report.agentResult?.error,
+      }),
+    );
     t.after(() => {
       for (const dir of [report.workspace, report.verification?.checkDir])
         if (dir) fs.rmSync(dir, { recursive: true, force: true });
@@ -105,9 +122,28 @@ test(
           } catch {}
       fs.rmSync(workspace, { recursive: true, force: true });
     });
+    const began = performance.now();
     const poll = setInterval(() => {
       if (fs.existsSync(record))
         controller.abort(new Error("Controlled bundled cancellation"));
+      else if (provider.posts && performance.now() - began > 25000)
+        controller.abort(
+          new Error(
+            "Bundled tool readiness failed: " +
+              JSON.stringify(
+                observed?.events
+                  .filter((event) => event.item?.type === "command_execution")
+                  .map((event) => ({
+                    ...event,
+                    item: {
+                      ...event.item,
+                      aggregated_output:
+                        event.item.aggregated_output?.slice(-4000),
+                    },
+                  })),
+              ),
+          ),
+        );
     }, 50);
     t.after(() => clearInterval(poll));
     await assert.rejects(
