@@ -47,7 +47,9 @@ test(
     const summary = JSON.parse(result.stdout),
       report = JSON.parse(fs.readFileSync(summary.reportPath));
     const toolEvidence = report.agentResult?.events
-      .filter((event) => event.item?.type === "command_execution")
+      .filter((event) =>
+        ["command_execution", "error"].includes(event.item?.type),
+      )
       .map((event) => ({
         type: event.type,
         item: {
@@ -62,6 +64,16 @@ test(
         summary,
         toolEvidence,
         agentError: report.agentResult?.error,
+        toolResults: provider.requests
+          .flatMap((r) => r.input ?? [])
+          .filter((i) => i.type === "function_call_output")
+          .map((i) => ({
+            ...i,
+            output: (typeof i.output === "string"
+              ? i.output
+              : JSON.stringify(i.output)
+            ).slice(-4000),
+          })),
       }),
     );
     t.after(() => {
@@ -132,7 +144,9 @@ test(
             "Bundled tool readiness failed: " +
               JSON.stringify(
                 observed?.events
-                  .filter((event) => event.item?.type === "command_execution")
+                  .filter((event) =>
+                    ["command_execution", "error"].includes(event.item?.type),
+                  )
                   .map((event) => ({
                     ...event,
                     item: {
