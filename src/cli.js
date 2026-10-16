@@ -1,6 +1,6 @@
 import { runMaintenance } from "./maintenance.js";
 const usage =
-  "Usage: npm run maintain -- [--model ENABLED_MODEL] [--output-root DIRECTORY] [--codex-path EXECUTABLE] [--timeout-ms 10..180000] [--provider-base-url URL]. OPENAI_API_KEY is required for a private isolated Codex runtime.";
+  "Usage: npm run maintain -- [--case CASE] [--model ENABLED_MODEL] [--output-root DIRECTORY] [--codex-path EXECUTABLE] [--timeout-ms 10..180000] [--provider-base-url URL]. OPENAI_API_KEY is required for a private isolated Codex runtime.";
 const args = process.argv.slice(2);
 try {
   if (args.length === 1 && args[0] === "--help") console.log(usage);
@@ -12,6 +12,7 @@ try {
       if (
         ![
           "--model",
+          "--case",
           "--output-root",
           "--codex-path",
           "--timeout-ms",
@@ -45,6 +46,7 @@ try {
     for (const [signal, handler] of handlers) process.once(signal, handler);
     try {
       const result = await runMaintenance({
+        caseId: config["--case"],
         model: config["--model"],
         codexPath: config["--codex-path"],
         providerBaseUrl: config["--provider-base-url"],

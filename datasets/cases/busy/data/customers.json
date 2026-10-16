@@ -1,0 +1,62 @@
+[
+  {
+    "id": "CUS-001",
+    "name": "Fictional studio 1",
+    "currency": "USD"
+  },
+  {
+    "id": "CUS-002",
+    "name": "Fictional studio 2",
+    "currency": "CAD"
+  },
+  {
+    "id": "CUS-003",
+    "name": "Fictional studio 3",
+    "currency": "JPY"
+  },
+  {
+    "id": "CUS-004",
+    "name": "Fictional studio 4",
+    "currency": "USD"
+  },
+  {
+    "id": "CUS-005",
+    "name": "Fictional studio 5",
+    "currency": "CAD"
+  },
+  {
+    "id": "CUS-006",
+    "name": "Fictional studio 6",
+    "currency": "JPY"
+  },
+  {
+    "id": "CUS-007",
+    "name": "Fictional studio 7",
+    "currency": "USD"
+  },
+  {
+    "id": "CUS-008",
+    "name": "Fictional studio 8",
+    "currency": "CAD"
+  },
+  {
+    "id": "CUS-009",
+    "name": "Fictional studio 9",
+    "currency": "JPY"
+  },
+  {
+    "id": "CUS-010",
+    "name": "Fictional studio 10",
+    "currency": "USD"
+  },
+  {
+    "id": "CUS-011",
+    "name": "Fictional studio 11",
+    "currency": "CAD"
+  },
+  {
+    "id": "CUS-012",
+    "name": "Fictional studio 12",
+    "currency": "JPY"
+  }
+]

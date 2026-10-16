@@ -148,6 +148,7 @@ export async function rememberBaseline(workspace, options = {}) {
     throw new Error("Original source/commit is invalid");
   const baseline = {
     schema_version: 1,
+    context: structuredClone(options.context ?? null),
     workspace: source.workspace,
     device: source.device,
     inode: source.inode,

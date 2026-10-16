@@ -1,0 +1,16 @@
+[
+  {
+    "id": "RUN-LEGACY-1",
+    "packageVersion": "1.0.0",
+    "completedAt": "2026-10-01T12:00:00.000Z",
+    "invoiceIds": [
+      "PAID-001",
+      "PAID-002",
+      "PAID-003",
+      "PAID-004",
+      "PAID-005",
+      "PAID-006"
+    ],
+    "status": "completed"
+  }
+]

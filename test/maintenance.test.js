@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFile, writeFile, rm } from "node:fs/promises";
+import { readFile, writeFile, rm, mkdtemp } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { childEnvironment } from "../src/commands.js";
 import {
   createWorkspace,
@@ -43,7 +44,10 @@ test("baseline installs cleanly but JPY test fails", async (t) => {
 });
 
 test("upgraded app, lockfile and hidden checks pass from a fresh install", async (t) => {
+  const outputRoot = await mkdtemp(join(tmpdir(), "deps-maintenance-test-"));
+  t.after(() => rm(outputRoot, { recursive: true, force: true }));
   const result = await runMaintenance({
+    outputRoot,
     agent: async (workspace) => {
       await scriptedUpgrade(workspace);
       return {

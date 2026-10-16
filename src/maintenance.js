@@ -1,6 +1,6 @@
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { command, succeeded } from "./commands.js";
 import {
@@ -12,22 +12,37 @@ import {
   checkPackageIntent,
   snapshot,
   sameSource,
+  hash,
 } from "./scope.js";
 import { prepareReport, saveReport } from "./evidence.js";
 import { runCodex } from "./native.js";
+import { selectedCase, copyCase } from "./datasets.js";
 export { runCodex, captureBaseline, changedPaths };
 const root = resolve(dirname(fileURLToPath(import.meta.url)), ".."),
-  seed = join(root, "seed"),
   grader = join(root, "grader/check.js");
+const workspaceCases = new Map();
+const finished = (result) =>
+  Boolean(result) &&
+  !result.error &&
+  !result.signal &&
+  result.lifecycle?.group_exit_confirmed === true &&
+  result.lifecycle?.descendants_exit_confirmed === true;
 export async function createWorkspace(options = {}) {
-  const workspace = await mkdtemp(join(tmpdir(), "firedrill-codex-deps-"));
+  const selected = await selectedCase(options.caseId ?? "upgrade");
+  if (
+    options.directory !== undefined &&
+    (typeof options.directory !== "string" || !options.directory.trim())
+  )
+    throw new Error("New directory path required");
+  const workspace =
+    options.directory === undefined
+      ? await mkdtemp(join(tmpdir(), "firedrill-codex-deps-"))
+      : resolve(options.directory);
+  if (options.directory !== undefined) await mkdir(workspace, { mode: 0o700 });
   try {
     await options.onWorkspace?.(workspace);
     options.signal?.throwIfAborted();
-    await cp(seed, workspace, {
-      recursive: true,
-      filter: (path) => basename(path) !== "node_modules",
-    });
+    await copyCase(selected.id, workspace);
     for (const args of [
       ["init", "-q"],
       ["add", "--force", "--", "."],
@@ -51,7 +66,14 @@ export async function createWorkspace(options = {}) {
       if (!succeeded(result))
         throw new Error(`git ${args[0]} failed: ${result.stderr}`);
     }
-    await rememberBaseline(workspace, options);
+    await rememberBaseline(workspace, {
+      ...options,
+      context: {
+        dataset: selected.identity,
+        snapshot_sha256: selected.snapshot_sha256,
+      },
+    });
+    workspaceCases.set(workspace, selected.id);
     return workspace;
   } catch (error) {
     await rm(workspace, { recursive: true, force: true });
@@ -61,8 +83,22 @@ export async function createWorkspace(options = {}) {
 export async function verifyWorkspace(
   workspace,
   baseline = captureBaseline(workspace),
-  { signal, runCommand = command } = {},
+  { signal, runCommand = command, caseId } = {},
 ) {
+  const originalCase =
+    workspaceCases.get(resolve(workspace)) ??
+    baseline.context?.dataset?.case_id;
+  if (!originalCase || (caseId !== undefined && caseId !== originalCase))
+    throw new Error("Original maintenance case authority required");
+  const selected = await selectedCase(originalCase);
+  if (
+    baseline.context?.snapshot_sha256 !== selected.snapshot_sha256 ||
+    baseline.tree.find((entry) => entry.path === ".dataset.json")?.sha256 !==
+      hash(selected.files.find((file) => file.path === ".dataset.json").bytes)
+  )
+    throw new Error(
+      "Original dataset authority differs from its captured source",
+    );
   const checked = await inspectScope(workspace, baseline, {
       signal,
       runCommand,
@@ -81,13 +117,17 @@ export async function verifyWorkspace(
     hidden: null,
     passed: false,
   };
+  if (selected.mode !== "upgrade") for (const file of paths) invalid.add(file);
   let copy;
   const recheck = async () => {
     const current = await inspectScope(workspace, baseline, {
       signal,
       runCommand,
     });
-    for (const file of current.paths) paths.add(file);
+    for (const file of current.paths) {
+      paths.add(file);
+      if (selected.mode !== "upgrade") invalid.add(file);
+    }
     for (const file of current.invalidPaths) invalid.add(file);
     if (!sameSource(candidate, current.source))
       throw new Error("Candidate source changed during verification");
@@ -127,7 +167,7 @@ export async function verifyWorkspace(
       });
       await guard();
     }
-    if (succeeded(result.tests)) {
+    if (selected.mode !== "clarify" && succeeded(result.tests)) {
       result.hidden = await runCommand(
         process.execPath,
         [grader, result.checkDir],
@@ -138,12 +178,12 @@ export async function verifyWorkspace(
     }
     result.passed =
       invalid.size === 0 &&
-      ["package.json", "package-lock.json", "src/report.js"].every((file) =>
-        paths.has(file),
-      ) &&
       succeeded(result.install) &&
-      succeeded(result.tests) &&
-      succeeded(result.hidden);
+      (selected.mode === "clarify"
+        ? paths.size === 0 &&
+          finished(result.tests) &&
+          result.tests.exitCode === selected.test_exit
+        : succeeded(result.tests) && succeeded(result.hidden));
   } catch (error) {
     result.error = { name: error.name, message: error.message };
     result.passed = false;
@@ -155,6 +195,7 @@ export async function verifyWorkspace(
 }
 export async function runMaintenance({
   agent = runCodex,
+  caseId = "upgrade",
   model,
   timeoutMs,
   codexPath,
@@ -163,8 +204,15 @@ export async function runMaintenance({
   outputRoot = ".runs",
   writer = saveReport,
 } = {}) {
+  const selected = await selectedCase(caseId);
   const report = {
-    schema_version: 1,
+    schema_version: 2,
+    case_id: caseId,
+    dataset: {
+      ...selected.identity,
+      snapshot_sha256: selected.snapshot_sha256,
+      manifest_sha256: selected.manifest_sha256,
+    },
     ...prepareReport(outputRoot),
     started_at: new Date().toISOString(),
     status: "running",
@@ -214,6 +262,7 @@ export async function runMaintenance({
     await save();
     signal?.throwIfAborted();
     report.workspace = await createWorkspace({
+      caseId,
       signal,
       runCommand,
       onWorkspace: async (workspace) => {
@@ -235,11 +284,17 @@ export async function runMaintenance({
     report.baselineTest = succeeded(report.baselineInstall)
       ? await runCommand("npm", ["test"], report.workspace, { signal })
       : null;
+    report.baselineExpected = {
+      install_exit: selected.install_exit,
+      test_exit: selected.test_exit,
+    };
     report.baselineValid =
-      succeeded(report.baselineInstall) &&
-      report.baselineTest?.exitCode === 1 &&
-      !report.baselineTest.signal &&
-      !report.baselineTest.error;
+      finished(report.baselineInstall) &&
+      report.baselineInstall.exitCode === selected.install_exit &&
+      (selected.test_exit === null
+        ? report.baselineTest === null
+        : finished(report.baselineTest) &&
+          report.baselineTest.exitCode === selected.test_exit);
     const prepared = await inspectScope(report.workspace, report.baseline, {
       signal,
       runCommand,
@@ -249,10 +304,11 @@ export async function runMaintenance({
     await save();
     if (!report.baselineValid)
       throw new Error(
-        "Original baseline must install successfully and fail its known JPY compatibility test",
+        "Original baseline does not match the selected case install/test expectation",
       );
     try {
       report.agentResult = await agent(report.workspace, {
+        caseId,
         model,
         timeoutMs,
         cliPath: codexPath,

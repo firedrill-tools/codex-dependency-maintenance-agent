@@ -1,0 +1,24 @@
+{
+  "request_id": "REQ-zero-minor-units",
+  "createdAt": "2026-10-15T12:00:00.000Z",
+  "invoices": [
+    {
+      "id": "NEW-001",
+      "customerId": "CUS-001",
+      "currency": "USD",
+      "totalMinorUnits": 0
+    },
+    {
+      "id": "NEW-002",
+      "customerId": "CUS-002",
+      "currency": "CAD",
+      "totalMinorUnits": 0
+    },
+    {
+      "id": "NEW-003",
+      "customerId": "CUS-003",
+      "currency": "JPY",
+      "totalMinorUnits": 0
+    }
+  ]
+}

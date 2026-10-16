@@ -1,0 +1,78 @@
+{
+  "request_id": "REQ-busy",
+  "createdAt": "2026-10-15T12:00:00.000Z",
+  "invoices": [
+    {
+      "id": "NEW-001",
+      "customerId": "CUS-001",
+      "currency": "USD",
+      "totalMinorUnits": 1200
+    },
+    {
+      "id": "NEW-002",
+      "customerId": "CUS-002",
+      "currency": "CAD",
+      "totalMinorUnits": 1525
+    },
+    {
+      "id": "NEW-003",
+      "customerId": "CUS-003",
+      "currency": "JPY",
+      "totalMinorUnits": 1850
+    },
+    {
+      "id": "NEW-004",
+      "customerId": "CUS-004",
+      "currency": "USD",
+      "totalMinorUnits": 2175
+    },
+    {
+      "id": "NEW-005",
+      "customerId": "CUS-005",
+      "currency": "CAD",
+      "totalMinorUnits": 2500
+    },
+    {
+      "id": "NEW-006",
+      "customerId": "CUS-006",
+      "currency": "JPY",
+      "totalMinorUnits": 2825
+    },
+    {
+      "id": "NEW-007",
+      "customerId": "CUS-007",
+      "currency": "USD",
+      "totalMinorUnits": 3150
+    },
+    {
+      "id": "NEW-008",
+      "customerId": "CUS-008",
+      "currency": "CAD",
+      "totalMinorUnits": 3475
+    },
+    {
+      "id": "NEW-009",
+      "customerId": "CUS-009",
+      "currency": "JPY",
+      "totalMinorUnits": 3800
+    },
+    {
+      "id": "NEW-010",
+      "customerId": "CUS-010",
+      "currency": "USD",
+      "totalMinorUnits": 4125
+    },
+    {
+      "id": "NEW-011",
+      "customerId": "CUS-011",
+      "currency": "CAD",
+      "totalMinorUnits": 4450
+    },
+    {
+      "id": "NEW-012",
+      "customerId": "CUS-012",
+      "currency": "JPY",
+      "totalMinorUnits": 4775
+    }
+  ]
+}

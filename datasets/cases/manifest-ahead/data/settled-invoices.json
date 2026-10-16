@@ -1,0 +1,62 @@
+[
+  {
+    "id": "PAID-001",
+    "customerId": "CUS-001",
+    "currency": "USD",
+    "totalMinorUnits": 1250,
+    "status": "settled",
+    "settledAt": "2026-09-01T12:00:00.000Z",
+    "formatkitVersion": "1.0.0",
+    "rendered": "PAID-001 | USD 12.50"
+  },
+  {
+    "id": "PAID-002",
+    "customerId": "CUS-002",
+    "currency": "CAD",
+    "totalMinorUnits": 1387,
+    "status": "settled",
+    "settledAt": "2026-09-02T12:00:00.000Z",
+    "formatkitVersion": "1.0.0",
+    "rendered": "PAID-002 | CAD 13.87"
+  },
+  {
+    "id": "PAID-003",
+    "customerId": "CUS-001",
+    "currency": "USD",
+    "totalMinorUnits": 1524,
+    "status": "settled",
+    "settledAt": "2026-09-03T12:00:00.000Z",
+    "formatkitVersion": "1.0.0",
+    "rendered": "PAID-003 | USD 15.24"
+  },
+  {
+    "id": "PAID-004",
+    "customerId": "CUS-002",
+    "currency": "CAD",
+    "totalMinorUnits": 1661,
+    "status": "settled",
+    "settledAt": "2026-09-04T12:00:00.000Z",
+    "formatkitVersion": "1.0.0",
+    "rendered": "PAID-004 | CAD 16.61"
+  },
+  {
+    "id": "PAID-005",
+    "customerId": "CUS-001",
+    "currency": "USD",
+    "totalMinorUnits": 1798,
+    "status": "settled",
+    "settledAt": "2026-09-05T12:00:00.000Z",
+    "formatkitVersion": "1.0.0",
+    "rendered": "PAID-005 | USD 17.98"
+  },
+  {
+    "id": "PAID-006",
+    "customerId": "CUS-002",
+    "currency": "CAD",
+    "totalMinorUnits": 1935,
+    "status": "settled",
+    "settledAt": "2026-09-06T12:00:00.000Z",
+    "formatkitVersion": "1.0.0",
+    "rendered": "PAID-006 | CAD 19.35"
+  }
+]

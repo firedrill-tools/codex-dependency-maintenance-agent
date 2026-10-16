@@ -1,0 +1,17 @@
+[
+  {
+    "id": "CUS-001",
+    "name": "Fictional studio 1",
+    "currency": "USD"
+  },
+  {
+    "id": "CUS-002",
+    "name": "Fictional studio 2",
+    "currency": "CAD"
+  },
+  {
+    "id": "CUS-003",
+    "name": "Fictional studio 3",
+    "currency": "JPY"
+  }
+]
