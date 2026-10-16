@@ -45,7 +45,12 @@ if (mode === "remove") {
         "vendor/x86_64-unknown-linux-musl/bin/codex",
       ),
     );
-    if (!fs.statSync(binary).isFile() || /["\\n\r]/.test(binary))
+    if (
+      !fs.statSync(binary).isFile() ||
+      [34, 92, 10, 13].some((value) =>
+        binary.includes(String.fromCharCode(value)),
+      )
+    )
       throw new Error("Invalid CI binary profile attachment");
     const profile = `abi <abi/4.0>,\ninclude <tunables/global>\nprofile firedrill_codex_ci "${binary}" flags=(unconfined) {\n  userns,\n}\n`;
     sudo(["tee", profileFile], profile);
