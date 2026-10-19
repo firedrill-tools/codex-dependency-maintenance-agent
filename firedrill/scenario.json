@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "2026-10-14",
+  "name": "Dependency maintenance \u2014 native Codex SDK and fresh offline validation",
+  "target": {
+    "kind": "command",
+    "argv": [
+      "node",
+      "firedrill/target.mjs"
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "upgrade",
+      "name": "Bounded local dependency upgrade",
+      "input": {
+        "caseId": "upgrade"
+      }
+    },
+    {
+      "id": "unclear-request",
+      "name": "Clarify missing dependency request without edits",
+      "input": {
+        "caseId": "unclear-request"
+      }
+    },
+    {
+      "id": "already-upgraded",
+      "name": "Verify already upgraded dependency without edits",
+      "input": {
+        "caseId": "already-upgraded"
+      }
+    }
+  ],
+  "repetitions": 1,
+  "concurrency": 1,
+  "limits": {
+    "timeoutMs": 300000,
+    "maxRuns": 3,
+    "maxOutputBytes": 4194304
+  }
+}
