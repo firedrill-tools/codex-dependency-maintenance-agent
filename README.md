@@ -1,6 +1,8 @@
-# Codex dependency maintenance agent
+# Dependency maintenance agent with the Codex SDK
 
 A standalone Codex SDK application upgrades a synthetic invoice-summary repository from local formatkit v1 to a breaking v2 API with JPY support. It verifies the exact candidate from a **separate fresh offline npm install**, preserving vendor packages, tests and unrelated files.
+
+Simulate this Codex SDK AI agent with [Firedrill](https://firedrill.run/), a simulation platform for AI agents. Start with the [Firedrill setup and simulation guide](firedrill/README.md); your coding agent can operate it while this application's runner stays in your repository or CI.
 
 ## Run
 
@@ -44,7 +46,7 @@ Original decoded SDK events, unknown fields, errors, usage, task hash and reques
 
 The changed-file check is an application policy gate, not an OS sandbox for arbitrary malicious code. Use disposable synthetic repositories. The CLI receives workspace-write/network-disabled/web-search-disabled/never-approve settings, but the grader's location outside working context alone is not an enforced read boundary. Source/API protocol and fixture compatibility are qualified independently from live semantic quality and account behavior.
 
-[Scenarios](scenarios/README.md) map twelve versioned cases/four profiles, original install/test expectations and no-edit boundaries. New Firedrill integration requires the qualified release/contract/persisted scenarios. Publication/license choices remain parked; this repository is private.
+[Scenarios](scenarios/README.md) map twelve versioned cases/four profiles, original install/test expectations and no-edit boundaries. The checked-in Firedrill adapter uses the released CLI/SDK; authenticated persisted-run verification remains separate. Publication/license choices remain parked; this repository is private.
 
 References: [official Codex SDK](https://learn.chatgpt.com/docs/codex-sdk), pinned installed SDK declarations/implementation and actual controlled native/Git/npm probes. Explore the [Firedrill example catalog](https://github.com/firedrill-tools/firedrill-example-catalog), [Firedrill](https://firedrill.run/) and [official developer documentation](https://docs.firedrill.run/).
 
@@ -57,7 +59,7 @@ formatkit-maintenance-cases1.0.0 has twelve hash-bound projects across starter/b
 
 The key-free `datasets` CLI validates index/file/identity hashes, lists cases and creates fresh private Git checkouts. `init CASE --directory NEW_DIRECTORY` never overwrites an existing path. Each normal `maintain --case CASE` call also creates a fresh checkout and private runtime. That resets owned local state; retained reports, external billing and caller-injected SDK/account state have separate ownership. Current case text/HEAD cannot replace original scope or grading mode. A serialized trusted original receipt can support postmortem verification in another process.
 
-`npm run package` builds a complete deterministic261-file0.2.0 source archive in `dist/`, with SOURCE_MANIFEST.json binding every included file/hash/mode and an adjacent SHA256 checksum. Installed node_modules are excluded. `npm run check:package` rebuilds identical bytes, extracts/checks the exact inventory outside checkout, installs locked dependencies, regenerates unchanged data, initializes all twelve cases/checks their real baselines and missing-key receipt, then reruns the entire98-check suite including actual bundled loopback tools. This full fresh locked extraction gate passes locally; exact Linux CI is required for the pushed source. Gzip metadata is normalized across macOS/Linux. Source/runtime tests establish boundaries; live model quality/billing and new Firedrill integration remain unqualified.
+`npm run package` builds a complete deterministic261-file0.2.0 source archive in `dist/`, with SOURCE_MANIFEST.json binding every included file/hash/mode and an adjacent SHA256 checksum. Installed node_modules are excluded. `npm run check:package` rebuilds identical bytes, extracts/checks the exact inventory outside checkout, installs locked dependencies, regenerates unchanged data, initializes all twelve cases/checks their real baselines and missing-key receipt, then reruns the entire98-check suite including actual bundled loopback tools. This full fresh locked extraction gate passes locally; exact Linux CI is required for the pushed source. Gzip metadata is normalized across macOS/Linux. Source/runtime tests establish boundaries; live model quality/billing and authenticated Firedrill persistence remain unqualified.
 
 ## Current Firedrill integration
 
