@@ -4,6 +4,8 @@ A standalone Codex SDK application upgrades a synthetic invoice-summary reposito
 
 Simulate this Codex SDK AI agent with [Firedrill](https://firedrill.run/), a simulation platform for AI agents. Start with the [Firedrill setup and simulation guide](firedrill/README.md); your coding agent can operate it while this application's runner stays in your repository or CI.
 
+This example repository is publicly viewable. A project license has not been selected.
+
 ## Run
 
 Requires Node.js20+, Git and npm on a local POSIX filesystem. The SDK is pinned to0.162.1. An owned run uses an explicit `OPENAI_API_KEY` and a private temporary Codex home; caller account configuration is not a fallback.
@@ -46,7 +48,7 @@ Original decoded SDK events, unknown fields, errors, usage, task hash and reques
 
 The changed-file check is an application policy gate, not an OS sandbox for arbitrary malicious code. Use disposable synthetic repositories. The CLI receives workspace-write/network-disabled/web-search-disabled/never-approve settings, but the grader's location outside working context alone is not an enforced read boundary. Source/API protocol and fixture compatibility are qualified independently from live semantic quality and account behavior.
 
-[Scenarios](scenarios/README.md) map twelve versioned cases/four profiles, original install/test expectations and no-edit boundaries. The checked-in Firedrill adapter uses the released CLI/SDK; authenticated persisted-run verification remains separate. Publication/license choices remain parked; this repository is private.
+[Scenarios](scenarios/README.md) map twelve versioned cases/four profiles, original install/test expectations and no-edit boundaries. The checked-in Firedrill adapter uses the released CLI/SDK; authenticated persisted-run verification remains separate. This repository is publicly viewable; no project license has been selected.
 
 References: [official Codex SDK](https://learn.chatgpt.com/docs/codex-sdk), pinned installed SDK declarations/implementation and actual controlled native/Git/npm probes. Explore the [Firedrill example catalog](https://github.com/firedrill-tools/firedrill-example-catalog), [Firedrill](https://firedrill.run/) and [official developer documentation](https://docs.firedrill.run/).
 
