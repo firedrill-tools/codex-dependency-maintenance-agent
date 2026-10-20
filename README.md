@@ -50,7 +50,7 @@ The changed-file check is an application policy gate, not an OS sandbox for arbi
 
 [Scenarios](scenarios/README.md) map twelve versioned cases/four profiles, original install/test expectations and no-edit boundaries. The checked-in Firedrill adapter uses the released CLI/SDK; authenticated persisted-run verification remains separate. This repository is publicly viewable; no project license has been selected.
 
-References: [official Codex SDK](https://learn.chatgpt.com/docs/codex-sdk), pinned installed SDK declarations/implementation and actual controlled native/Git/npm probes. Explore the [Firedrill example catalog](https://github.com/firedrill-tools/firedrill-example-catalog), [Firedrill](https://firedrill.run/) and [official developer documentation](https://docs.firedrill.run/).
+References: [official Codex SDK](https://learn.chatgpt.com/docs/codex-sdk), pinned installed SDK declarations/implementation and actual controlled native/Git/npm probes. Explore the [Firedrill examples](https://docs.firedrill.run/guides/examples), [Firedrill](https://firedrill.run/) and [official developer documentation](https://docs.firedrill.run/).
 
 Ubuntu24 may block the pinned CLI's embedded sandbox before tool startup. Disposable Linux CI attaches a temporary AppArmor userns profile only to that exact binary and removes it afterward; no global sysctl or application sandbox flag is changed. Normal application runs never alter host policy. [Ubuntu documents the restriction](https://documentation.ubuntu.com/release-notes/24.04/); [the upstream Codex report](https://github.com/openai/codex/issues/14919) reproduces the same bubblewrap RTM_NEWADDR error. Actual tool execution is verified from original upstream function-call results and fresh source checks.
 
